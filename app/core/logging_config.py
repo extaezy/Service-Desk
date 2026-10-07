@@ -10,7 +10,6 @@ def setup_logging():
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
         handlers=[
-            logging.StreamHandler(),
             RotatingFileHandler(
                 "logs/bot.log",
                 maxBytes=5_000_000,

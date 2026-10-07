@@ -10,12 +10,14 @@ from app.keyboards.cancel import cancel_keyboard
 from app.states.ticket import TicketForm
 from app.keyboards.confirm import confirm_keyboard
 
+from db.queries import create_ticket
+from sqlalchemy.exc import SQLAlchemyError
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 @router.message(F.text == "Создать заявку")
-async def create_ticket(message: Message, state: FSMContext):
+async def start_ticket_creation(message: Message, state: FSMContext):
     await state.set_state(TicketForm.title)
     await message.answer(
         "Введите название заявки:",
@@ -261,19 +263,43 @@ async def confirm_ticket(
 ):
     data = await state.get_data()
 
-    # Здесь позже добавим сохранение в БД
+    try:
+        ticket = await create_ticket(
+            telegram_user_id=callback.from_user.id,
+            title=data["title"],
+            category=data["category"],
+            description=data["description"],
+        )
+
+    except SQLAlchemyError:
+        logger.exception(
+            "Ошибка при сохранении заявки пользователя %s",
+            callback.from_user.id,
+        )
+
+        await callback.answer(
+            "Не удалось сохранить заявку",
+            show_alert=True,
+        )
+
+        return
+
+    await callback.message.edit_reply_markup(
+        reply_markup=None
+    )
+
+    await callback.message.answer(
+        f"✅ Заявка №{ticket.id} успешно создана."
+    )
 
     await state.clear()
-    await callback.answer()
-
-    await callback.message.edit_text(
-        "✅ Заявка подтверждена!"
-    )
 
     await callback.message.answer(
         "Главное меню:",
         reply_markup=main_keyboard
     )
+
+    await callback.answer()
 
 
 @router.callback_query(
