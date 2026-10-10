@@ -288,14 +288,6 @@ async def confirm_ticket(
 
         return
 
-    await callback.message.edit_reply_markup(
-        reply_markup=None
-    )
-
-    await callback.message.answer(
-        f"✅ Заявка №{ticket.id} успешно создана."
-    )
-
     await state.clear()
 
     try:
