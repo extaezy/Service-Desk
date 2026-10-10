@@ -3,6 +3,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.filters import StateFilter
 
 from app.keyboards.categories import category_keyboard
 from app.keyboards.main_menu import main_keyboard
@@ -16,7 +17,10 @@ from sqlalchemy.exc import SQLAlchemyError
 router = Router()
 logger = logging.getLogger(__name__)
 
-@router.message(F.text == "Создать заявку")
+@router.message(
+    StateFilter(None),
+    F.text == "Создать заявку"
+)
 async def start_ticket_creation(message: Message, state: FSMContext):
     await state.set_state(TicketForm.title)
     await message.answer(
@@ -271,7 +275,7 @@ async def confirm_ticket(
             description=data["description"],
         )
 
-    except SQLAlchemyError:
+    except (SQLAlchemyError, ValueError):
         logger.exception(
             "Ошибка при сохранении заявки пользователя %s",
             callback.from_user.id,

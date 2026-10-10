@@ -1,12 +1,8 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-
-class Base(DeclarativeBase):
-    pass
-
+from sqlalchemy import BigInteger, DateTime, String, func, ForeignKey
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from db.base import Base
 
 class Ticket(Base):
     __tablename__ = "tickets"
@@ -15,9 +11,13 @@ class Ticket(Base):
         primary_key=True
     )
 
-    telegram_user_id: Mapped[int] = mapped_column(
-        BigInteger,
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
         nullable=False
+    )
+
+    user: Mapped["User"] = relationship(
+        back_populates="tickets"
     )
 
     title: Mapped[str] = mapped_column(
@@ -38,6 +38,7 @@ class Ticket(Base):
     status: Mapped[str] = mapped_column(
         String(30),
         default="new",
+        server_default="new",
         nullable=False
     )
 
@@ -46,3 +47,4 @@ class Ticket(Base):
         server_default=func.now(),
         nullable=False
     )
+
