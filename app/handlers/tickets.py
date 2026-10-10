@@ -298,12 +298,26 @@ async def confirm_ticket(
 
     await state.clear()
 
+    try:
+        await callback.message.edit_reply_markup(
+            reply_markup=None
+        )
+    except TelegramBadRequest:
+        logger.exception(
+            "Не удалось убрать кнопку заявки №%s",
+            ticket.id
+        )
+
+    await callback.answer()
+
+    await callback.message.answer(
+        f"✅ Заявка №{ticket.id} успешно создана."
+    )
+
     await callback.message.answer(
         "Главное меню:",
         reply_markup=main_keyboard
     )
-
-    await callback.answer()
 
 
 @router.callback_query(

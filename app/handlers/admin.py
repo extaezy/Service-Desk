@@ -292,8 +292,8 @@ async def admin_close_ticket(
 
     await update_ticket_message(
         callback,
-        old_status="new",
-        new_status="🔄 В работе"
+        old_status="🔄 В работе",
+        new_status="✅ Закрыта"
     )
 
     await callback.answer()
