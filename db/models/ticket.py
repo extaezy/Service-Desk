@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, String, func, ForeignKey
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy import DateTime, String, func, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from db.base import Base
 
 class Ticket(Base):
