@@ -11,7 +11,6 @@ from app.handlers.my_tickets import router as my_tickets_router
 from app.handlers.help import router as help_router
 from app.core.logging_config import setup_logging
 
-
 load_dotenv()
 
 

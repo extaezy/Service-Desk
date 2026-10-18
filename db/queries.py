@@ -7,20 +7,6 @@ from db.models import User, Ticket
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
-async def get_or_create_user(
-    telegram_user_id: int,
-    username: str | None,
-    full_name: str,
-) -> User:
-
-    async with async_session() as session:
-        return await get_or_create_user_by_session(
-            telegram_user_id=telegram_user_id,
-            username=username,
-            full_name=full_name,
-            session=session
-        )
-
 async def get_or_create_user_by_session(
     telegram_user_id: int,
     username: str | None,
@@ -57,15 +43,6 @@ async def get_or_create_user_by_session(
         await session.rollback()
         raise
 
-async def get_user_tickets(
-    telegram_user_id: int,
-) -> list[Ticket]:
-    async with async_session() as session:
-        return await get_user_tickets_by_session(
-            telegram_user_id,
-            session
-        )
-
 async def get_user_tickets_by_session(
     telegram_user_id: int,
     session: AsyncSession
@@ -85,21 +62,6 @@ async def get_user_tickets_by_session(
 
     result = await session.execute(stmt)
     return list(result.scalars().all())
-
-async def create_ticket(
-    telegram_user_id: int,
-    title: str,
-    category: str,
-    description: str
-) -> Ticket:
-    async with async_session() as session:
-        return await create_ticket_by_session(
-            telegram_user_id = telegram_user_id,
-            title = title,
-            category = category,
-            description = description,
-            session = session
-        )
 
 async def create_ticket_by_session(
     telegram_user_id: int,
@@ -140,25 +102,6 @@ async def create_ticket_by_session(
         await session.rollback()
         raise
 
-
-async def is_admin(telegram_user_id: int) -> bool:
-    async with async_session() as session:
-        stmt = select(User.role).where(
-            User.telegram_user_id == telegram_user_id
-        )
-
-        result = await session.execute(stmt)
-        role = result.scalar_one_or_none()
-
-        return role == "admin"
-
-async def get_admin_tickets(status: str) -> list[Ticket]:
-    async with async_session() as session:
-        return await get_admin_tickets_by_session(
-            status = status,
-            session = session,
-        )
-
 async def get_admin_tickets_by_session(
         status: str,
         session: AsyncSession
@@ -178,13 +121,6 @@ async def get_admin_tickets_by_session(
 
     result = await session.execute(stmt)
     return list(result.scalars().all())
-
-async def take_ticket(ticket_id: int) -> int | None:
-    async with async_session() as session:
-        return await take_ticket_by_session(
-            ticket_id=ticket_id,
-            session=session
-        )
 
 async def take_ticket_by_session(
     ticket_id: int,
@@ -206,13 +142,6 @@ async def take_ticket_by_session(
     await session.commit()
 
     return user_id
-
-async def close_ticket(ticket_id: int) -> int | None:
-    async with async_session() as session:
-        return await close_ticket_by_session(
-            ticket_id=ticket_id,
-            session=session
-        )
 
 async def close_ticket_by_session(
     ticket_id: int,
@@ -288,12 +217,16 @@ async def update_ticket_status_by_session(
         await session.rollback()
         raise
 
-async def get_telegram_id(user_id: int) -> int | None:
-    async with async_session() as session:
-        stmt = select(User.telegram_user_id).where(
-            User.id == user_id
-        )
+async def is_admin_by_session(
+    telegram_user_id: int,
+    session: AsyncSession
+) -> bool:
 
-        result = await session.execute(stmt)
+    stmt = select(User.role).where(
+        User.telegram_user_id == telegram_user_id
+    )
 
-        return result.scalar_one_or_none()
+    result = await session.execute(stmt)
+    role = result.scalar_one_or_none()
+
+    return role == "admin"

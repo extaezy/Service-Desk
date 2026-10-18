@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.dependencies import get_db
+from api.dependencies import get_db, verify_api_key, require_admin
 from api.schemas import (TicketCreate, TicketResponse, AdminTicketResponse,
                          TicketStatusResponse, TicketStatusUpdate)
 from db.queries import (get_user_tickets_by_session, create_ticket_by_session, get_admin_tickets_by_session,
@@ -10,6 +10,7 @@ update_ticket_status_by_session)
 router = APIRouter(
     prefix="/tickets",
     tags=["tickets"],
+    dependencies=[Depends(verify_api_key)]
 )
 
 @router.get(
@@ -53,7 +54,8 @@ async def add_ticket(
 
 @router.get(
     "/admin",
-    response_model=list[AdminTicketResponse]
+    response_model=list[AdminTicketResponse],
+    dependencies=[Depends(require_admin)]
 )
 async def get_admin_tickets_route(
     status: str,
@@ -72,7 +74,8 @@ async def get_admin_tickets_route(
 
 @router.patch(
     "/{ticket_id}/status",
-    response_model=TicketStatusResponse
+    response_model=TicketStatusResponse,
+    dependencies=[Depends(require_admin)]
 )
 async def update_ticket_status(
     ticket_id: int,

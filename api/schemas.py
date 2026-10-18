@@ -37,7 +37,7 @@ class AdminTicketResponse(TicketResponse):
 
 #Update status
 class TicketStatusUpdate(BaseModel):
-    status: Literal['in_progress', 'completed']
+    status: Literal['in_progress', 'closed']
 
 class TicketStatusResponse(BaseModel):
     telegram_user_id: int

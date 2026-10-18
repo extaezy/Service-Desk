@@ -4,7 +4,7 @@ from aiogram.types import Message
 from aiogram.filters import StateFilter
 
 from app.keyboards.main_menu import main_keyboard
-from db.queries import get_or_create_user
+from app.api_client.users import register_user
 
 router = Router()
 
@@ -20,7 +20,7 @@ async def start_handler(message: Message):
     if tg_user is None:
         return
 
-    await get_or_create_user(
+    await register_user(
         telegram_user_id=tg_user.id,
         username=tg_user.username,
         full_name=tg_user.full_name,

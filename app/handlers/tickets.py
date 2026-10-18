@@ -1,4 +1,5 @@
 import logging
+import httpx
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -11,8 +12,7 @@ from app.keyboards.cancel import cancel_keyboard
 from app.states.ticket import TicketForm
 from app.keyboards.confirm import confirm_keyboard
 
-from db.queries import create_ticket
-from sqlalchemy.exc import SQLAlchemyError
+from app.api_client.tickets import create_ticket
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -198,7 +198,7 @@ async def process_category(
         return
 
 
-    await state.update_data(category=category)
+    await state.update_data(category=category_id)
     await state.set_state(TicketForm.description)
 
     await callback.answer()
@@ -275,7 +275,7 @@ async def confirm_ticket(
             description=data["description"],
         )
 
-    except (SQLAlchemyError, ValueError):
+    except (httpx.HTTPStatusError, httpx.RequestError):
         logger.exception(
             "Ошибка при сохранении заявки пользователя %s",
             callback.from_user.id,
@@ -285,11 +285,9 @@ async def confirm_ticket(
             "Не удалось сохранить заявку",
             show_alert=True,
         )
-
         return
 
     await state.clear()
-
     try:
         await callback.message.edit_reply_markup(
             reply_markup=None
@@ -297,13 +295,13 @@ async def confirm_ticket(
     except TelegramBadRequest:
         logger.exception(
             "Не удалось убрать кнопку заявки №%s",
-            ticket.id
+            ticket['id']
         )
 
     await callback.answer()
 
     await callback.message.answer(
-        f"✅ Заявка №{ticket.id} успешно создана."
+        f"✅ Заявка №{ticket['id']} успешно создана."
     )
 
     await callback.message.answer(

@@ -1,12 +1,16 @@
+
+import logging
+import httpx
+
 from aiogram import Router, F
 from aiogram.types import Message
-from sqlalchemy.exc import SQLAlchemyError
 from aiogram.filters import StateFilter
 
-from db.queries import get_user_tickets
+from app.api_client.tickets import get_user_tickets
 
 
 router = Router()
+logger = logging.getLogger(__name__)
 
 
 @router.message(
@@ -14,7 +18,6 @@ router = Router()
     F.text == "Мои заявки"
 )
 async def my_tickets(message: Message):
-
     if message.from_user is None:
         return
 
@@ -23,7 +26,8 @@ async def my_tickets(message: Message):
             telegram_user_id=message.from_user.id
         )
 
-    except SQLAlchemyError:
+    except (httpx.HTTPStatusError, httpx.RequestError):
+        logger.exception("Ошибка получения заявок через API")
         await message.answer(
             "Не удалось загрузить заявки. Попробуйте позже."
         )
@@ -41,15 +45,27 @@ async def my_tickets(message: Message):
         "closed": "✅ Закрыта",
     }
 
+    category_names = {
+        "hardware": "Оборудование",
+        "software": "Программное обеспечение",
+        "network": "Сеть и интернет",
+        "other": "Другое",
+    }
+
     for ticket in tickets:
         status = status_names.get(
-            ticket.status,
+            ticket["status"],
             "Неизвестный статус"
         )
 
+        category = category_names.get(
+            ticket["category"],
+            ticket["category"]
+        )
+
         await message.answer(
-            f"📋 Заявка №{ticket.id}\n"
-            f"Название: {ticket.title}\n"
-            f"Категория: {ticket.category}\n"
+            f"📋 Заявка №{ticket['id']}\n"
+            f"Название: {ticket['title']}\n"
+            f"Категория: {category}\n"
             f"Статус: {status}"
         )

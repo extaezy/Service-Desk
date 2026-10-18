@@ -1,35 +1,53 @@
 import logging
+import httpx
+
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import (
+    Message,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery,
+)
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 
 from app.states.admin_state import AdminState
-from sqlalchemy.exc import SQLAlchemyError
-from db.queries import is_admin
-from db.queries import get_admin_tickets
-from db.queries import take_ticket
-from db.queries import close_ticket
-from db.queries import get_telegram_id
-
+from app.api_client.tickets import (
+    get_admin_tickets,
+    update_ticket_status,
+)
 from app.keyboards.admin_keyboard import admin_keyboard
 from app.keyboards.main_menu import main_keyboard
+
+from app.api_client.users import is_admin
+
 
 router = Router()
 logger = logging.getLogger(__name__)
 
+
+STATUS_NAMES = {
+    "new": "🆕 Новая",
+    "in_progress": "🔄 В работе",
+    "closed": "✅ Закрыта",
+}
+
+CATEGORY_NAMES = {
+    "hardware": "Оборудование",
+    "software": "Программное обеспечение",
+    "network": "Сеть и интернет",
+    "other": "Другое",
+}
+
+
 @router.message(Command("admin"))
 async def admin_panel(message: Message, state: FSMContext):
-
     if message.from_user is None:
         return
 
     if not await is_admin(message.from_user.id):
-        await message.answer(
-            "У вас нет прав администратора."
-        )
+        await message.answer("У вас нет прав администратора.")
         return
 
     await state.set_state(AdminState.active)
@@ -41,11 +59,10 @@ async def admin_panel(message: Message, state: FSMContext):
     )
 
 
-@router.message(
-    AdminState.active,
-    F.text == "🆕 Новые заявки"
-)
+@router.message(F.text == "🆕 Новые заявки")
 async def admin_new_tickets(message: Message):
+    if message.from_user is None:
+        return
 
     if not await is_admin(message.from_user.id):
         await message.answer("Нет доступа")
@@ -54,11 +71,10 @@ async def admin_new_tickets(message: Message):
     await show_admin_tickets(message, "new")
 
 
-@router.message(
-    AdminState.active,
-    F.text == "🔄 В работе"
-)
+@router.message(F.text == "🔄 В работе")
 async def admin_in_progress_tickets(message: Message):
+    if message.from_user is None:
+        return
 
     if not await is_admin(message.from_user.id):
         await message.answer("Нет доступа")
@@ -66,10 +82,8 @@ async def admin_in_progress_tickets(message: Message):
 
     await show_admin_tickets(message, "in_progress")
 
-@router.message(
-    AdminState.active,
-    F.text == "🚪 Выйти из режима администратора"
-)
+
+@router.message(F.text == "🚪 Выйти из режима администратора")
 async def exit_admin(message: Message, state: FSMContext):
 
     await state.clear()
@@ -79,15 +93,19 @@ async def exit_admin(message: Message, state: FSMContext):
         reply_markup=main_keyboard
     )
 
+
 async def show_admin_tickets(
     message: Message,
     status: str
 ):
     try:
-        tickets = await get_admin_tickets(status)
+        tickets = await get_admin_tickets(
+            status=status,
+            admin_id=message.from_user.id
+        )
 
-    except SQLAlchemyError:
-        logger.exception("Ошибка загрузки заявок")
+    except Exception:
+        logger.exception("Ошибка загрузки заявок администратора")
         await message.answer("Ошибка загрузки заявок")
         return
 
@@ -100,22 +118,22 @@ async def show_admin_tickets(
     for ticket in tickets:
         keyboard = None
 
-        if ticket.status == "new":
+        if ticket["status"] == "new":
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[[
                     InlineKeyboardButton(
                         text="✅ Взять в работу",
-                        callback_data=f"admin:take:{ticket.id}"
+                        callback_data=f"admin:take:{ticket['id']}"
                     )
                 ]]
             )
 
-        elif ticket.status == "in_progress":
+        elif ticket["status"] == "in_progress":
             keyboard = InlineKeyboardMarkup(
                 inline_keyboard=[[
                     InlineKeyboardButton(
                         text="🔒 Закрыть заявку",
-                        callback_data=f"admin:close:{ticket.id}"
+                        callback_data=f"admin:close:{ticket['id']}"
                     )
                 ]]
             )
@@ -124,6 +142,28 @@ async def show_admin_tickets(
             format_ticket(ticket),
             reply_markup=keyboard
         )
+
+
+def format_ticket(ticket: dict) -> str:
+    status = STATUS_NAMES.get(
+        ticket["status"],
+        ticket["status"]
+    )
+
+    category = CATEGORY_NAMES.get(
+        ticket["category"],
+        ticket["category"]
+    )
+
+    return (
+        f"📋 Заявка №{ticket['id']}\n"
+        f"Название: {ticket['title']}\n"
+        f"Категория: {category}\n"
+        f"Описание: {ticket['description']}\n"
+        f"Автор: {ticket['user']['full_name']}\n"
+        f"Статус: {status}"
+    )
+
 
 async def update_ticket_message(
     callback: CallbackQuery,
@@ -146,49 +186,23 @@ async def update_ticket_message(
             reply_markup=None
         )
 
-    except TelegramBadRequest as e:
-        if "message is not modified" in str(e).lower():
+    except TelegramBadRequest as exc:
+        if "message is not modified" in str(exc).lower():
             return
 
         logger.exception(
             "Ошибка обновления сообщения заявки"
         )
 
-STATUS_NAMES = {
-    "new": "🆕 Новая",
-    "in_progress": "🔄 В работе",
-    "closed": "✅ Закрыта",
-}
 
-
-def format_ticket(ticket) -> str:
-    return (
-        f"📋 Заявка №{ticket.id}\n"
-        f"Название: {ticket.title}\n"
-        f"Категория: {ticket.category}\n"
-        f"Описание: {ticket.description}\n"
-        f"Автор: {ticket.user.full_name}\n"
-        f"Статус: {STATUS_NAMES.get(ticket.status, ticket.status)}"
-    )
 
 @router.callback_query(F.data.startswith("admin:take:"))
 async def admin_take_ticket(
     callback: CallbackQuery,
     state: FSMContext
 ):
-
     if not await is_admin(callback.from_user.id):
-        await callback.answer(
-            "Нет доступа",
-            show_alert=True
-        )
-        return
-
-    if await state.get_state() != AdminState.active.state:
-        await callback.answer(
-            "Сначала войдите в режим администратора через /admin",
-            show_alert=True
-        )
+        await callback.answer("Нет доступа", show_alert=True)
         return
 
     try:
@@ -202,65 +216,69 @@ async def admin_take_ticket(
         return
 
     try:
-        user_id = await take_ticket(ticket_id)
+        result = await update_ticket_status(
+            ticket_id=ticket_id,
+            status="in_progress",
+            admin_id=callback.from_user.id
+        )
 
-    except SQLAlchemyError:
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 409:
+            await callback.answer(
+                "Заявка уже обработана или недоступна",
+                show_alert=True
+            )
+            return
+
+        logger.exception(
+            "Ошибка API при взятии заявки №%s",
+            ticket_id
+        )
         await callback.answer(
             "Ошибка при обновлении заявки",
             show_alert=True
         )
         return
 
-    if user_id is None:
+    except httpx.RequestError:
+        logger.exception("Нет соединения с FastAPI")
         await callback.answer(
-            "Заявка уже взята в работу или не существует",
+            "Сервер недоступен",
             show_alert=True
         )
         return
 
     await update_ticket_message(
         callback,
-        old_status="new",
+        old_status="🆕 Новая",
         new_status="🔄 В работе"
     )
 
     await callback.answer()
+
     try:
-        telegram_id = await get_telegram_id(user_id)
-
-        if telegram_id is not None:
-            await callback.bot.send_message(
-                chat_id=telegram_id,
-                text=(
-                    f"🔄 Ваша заявка №{ticket_id} "
-                    f"взята в работу."
-                )
+        await callback.bot.send_message(
+            chat_id=result["telegram_user_id"],
+            text=(
+                f"🔄 Ваша заявка №{ticket_id} "
+                f"взята в работу."
             )
+        )
 
-    except (SQLAlchemyError, TelegramAPIError):
+    except TelegramAPIError:
         logger.exception(
             "Не удалось уведомить автора заявки №%s",
             ticket_id
         )
+
 
 @router.callback_query(F.data.startswith("admin:close:"))
 async def admin_close_ticket(
     callback: CallbackQuery,
     state: FSMContext
 ):
-
     if not await is_admin(callback.from_user.id):
-        await callback.answer(
-            "Нет доступа",
-            show_alert=True
-        )
-        return
-
-    if await state.get_state() != AdminState.active.state:
-        await callback.answer(
-            "Сначала войдите в режим администратора через /admin",
-            show_alert=True
-        )
+        await callback.answer("Нет доступа", show_alert=True)
         return
 
     try:
@@ -274,18 +292,34 @@ async def admin_close_ticket(
         return
 
     try:
-        user_id = await close_ticket(ticket_id)
+        result = await update_ticket_status(
+            ticket_id=ticket_id,
+            status="closed",
+            admin_id=callback.from_user.id
+        )
 
-    except SQLAlchemyError:
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 409:
+            await callback.answer(
+                "Заявка уже закрыта или недоступна",
+                show_alert=True
+            )
+            return
+
+        logger.exception(
+            "Ошибка API при закрытии заявки №%s",
+            ticket_id
+        )
         await callback.answer(
             "Ошибка при закрытии заявки",
             show_alert=True
         )
         return
 
-    if user_id is None:
+    except httpx.RequestError:
+        logger.exception("Нет соединения с FastAPI")
         await callback.answer(
-            "Заявка уже закрыта или не находится в работе",
+            "Сервер недоступен",
             show_alert=True
         )
         return
@@ -299,22 +333,21 @@ async def admin_close_ticket(
     await callback.answer()
 
     try:
-        telegram_id = await get_telegram_id(user_id)
-
-        if telegram_id is not None:
-            await callback.bot.send_message(
-                chat_id=telegram_id,
-                text=(
-                    f"✅ Ваша заявка №{ticket_id} закрыта.\n"
-                    "Спасибо за обращение!"
-                )
+        await callback.bot.send_message(
+            chat_id=result["telegram_user_id"],
+            text=(
+                f"✅ Ваша заявка №{ticket_id} закрыта.\n"
+                "Спасибо за обращение!"
             )
+        )
 
-    except (SQLAlchemyError, TelegramAPIError):
+    except TelegramAPIError:
         logger.exception(
             "Не удалось уведомить автора о закрытии заявки №%s",
             ticket_id
         )
+
+
 
 @router.message(AdminState.active)
 async def admin_unknown_message(message: Message):
